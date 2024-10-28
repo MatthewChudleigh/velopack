@@ -53,6 +53,7 @@ derivative.workspace = true
 glob.workspace = true
 remove_dir_all.workspace = true
 time.workspace = true
+tempfile.workspace = true
 os_info.workspace = true
 bitflags.workspace = true
 regex.workspace = true

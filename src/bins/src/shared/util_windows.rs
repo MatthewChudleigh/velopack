@@ -8,7 +8,10 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::Command as Process,
+    process::Stdio,
 };
+use std::os::windows::process::CommandExt;
+use std::process::Child;
 use windows::Wdk::System::Threading::{NtQueryInformationProcess, ProcessBasicInformation};
 use windows::Win32::System::Threading::{GetCurrentProcess, PROCESS_BASIC_INFORMATION};
 use winsafe::{self as w, co, prelude::*};
@@ -173,12 +176,29 @@ pub fn start_package(locator: &VelopackLocator, exe_args: Option<Vec<&str>>, set
     let current = locator.get_current_bin_dir();
     let exe_to_execute = locator.get_main_exe_path();
 
+    start_exe_in_dir(&current, &exe_to_execute, exe_args, set_env, false, false)?;
+    Ok(())
+}
+
+pub fn start_exe_in_dir(current_bin_dir: &PathBuf, exe_to_execute: &PathBuf, exe_args: Option<Vec<&str>>, set_env: Option<&str>,
+                        redirect_stdin: bool, redirect_stdout: bool) -> Result<Child> {
     if !exe_to_execute.exists() {
         bail!("Unable to find executable to start: '{}'", exe_to_execute.to_string_lossy());
     }
 
     let mut psi = Process::new(&exe_to_execute);
-    psi.current_dir(&current);
+
+    if redirect_stdin {
+        psi.stdin(Stdio::piped());
+    }
+    if redirect_stdout {
+        psi.stdout(Stdio::piped());
+    }
+    if redirect_stdin || redirect_stdout {
+        psi.creation_flags(0x08000000); // CREATE_NO_WINDOW flag
+    }
+
+    psi.current_dir(current_bin_dir);
     if let Some(args) = exe_args {
         psi.args(args);
     }
@@ -187,12 +207,12 @@ pub fn start_package(locator: &VelopackLocator, exe_args: Option<Vec<&str>>, set
         psi.env(env, "true");
     }
 
-    info!("About to launch: '{:?}' in dir '{:?}'", exe_to_execute, current);
+    info!("About to launch: '{:?}' in dir '{:?}'", exe_to_execute, current_bin_dir);
     info!("Args: {:?}", psi.get_args());
     let child = psi.spawn().map_err(|z| anyhow!("Failed to start application ({}).", z))?;
     let _ = unsafe { AllowSetForegroundWindow(child.id()) };
 
-    Ok(())
+    Ok(child)
 }
 
 pub fn get_app_prefixed_folders<P: AsRef<Path>>(parent_path: P) -> Result<Vec<PathBuf>> {

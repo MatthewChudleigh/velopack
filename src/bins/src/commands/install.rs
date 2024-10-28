@@ -6,13 +6,15 @@ use crate::{
 use velopack::bundle::BundleZip;
 use velopack::locator::*;
 use velopack::constants;
-
+use tempfile::TempDir;
 use anyhow::{anyhow, bail, Result};
 use pretty_bytes_rust::pretty_bytes;
 use std::{
     fs::{self},
-    path::{Path, PathBuf},
+    path::{Path, PathBuf}
 };
+use std::io::{BufRead, BufReader, Write};
+use std::process::Child;
 use ::windows::core::PCWSTR;
 use ::windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
 
@@ -37,15 +39,52 @@ pub fn install(pkg: &mut BundleZip, install_to: Option<&PathBuf>, start_args: Op
         return Ok(());
     }
 
+    let mut path_buf: Option<PathBuf> = None;
+    let mut install_to_path = install_to;
+    let mut config_process: Option<Child> = None;
+    if !app.config_exe.is_empty() {
+        info!("Running Config");
+        let temp_dir = TempDir::new()?;
+        let temp_dir_path = temp_dir.into_path();
+        let config_path = temp_dir_path.join(&app.config_exe);
+        pkg.find_and_extract_zip_file_to_path(&app.config_exe, &config_path)?;
+        let mut ps = shared::start_exe_in_dir(&temp_dir_path, &config_path, None, None, true, true)?;
+
+        if let Some(mut stdin) = ps.stdin.take() {
+            // Write a string to the child's stdin
+            let input = "install_to_path\n"; // Replace with the string you want to write
+            stdin.write_all(input.as_bytes())?;
+        }
+
+        if let Some(stdout) = ps.stdout.take() {
+            let mut reader = BufReader::new(stdout);
+            let mut line = String::new();
+            while reader.read_line(&mut line)? > 0 {
+                info!("Config provided install_to_path: {}", &line.trim());
+                path_buf = Some(PathBuf::from(line.trim()));
+                line.clear(); // Clear the buffer for the next line
+                break;
+            }
+        } else {
+            info!("Config did not provide stdout");
+        }
+
+        config_process = Some(ps);
+    }
+
+    if let Some(ref pb) = path_buf {
+        install_to_path = Some(pb);
+    }
+
     info!("Determining install directory...");
-    let (root_path, root_is_default) = if install_to.is_some() {
-        (install_to.unwrap().clone(), false)
+    let (root_path, root_is_default) = if install_to_path.is_some() {
+        (install_to_path.unwrap().clone(), false)
     } else {
         let appdata = windows::known_path::get_local_app_data()?;
         (Path::new(&appdata).join(&app.id), true)
     };
 
-    // path needs to exist for future operations (disk space etc)
+    // path needs to exist for future operations (disk space etc.)
     if !root_path.exists() {
         shared::retry_io(|| fs::create_dir_all(&root_path))?;
     }
@@ -143,6 +182,13 @@ pub fn install(pkg: &mut BundleZip, install_to: Option<&PathBuf>, start_args: Op
             let _ = shared::retry_io(|| fs::rename(&root_path_renamed, &root_path));
         }
         install_result?;
+    }
+
+    if let Some(mut ps) = config_process {
+        let exit = ps.wait()?;
+        if !exit.success() {
+            info!("Config exited with non-zero status");
+        }
     }
 
     Ok(())

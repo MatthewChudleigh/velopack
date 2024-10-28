@@ -247,10 +247,12 @@ impl BundleZip<'_> {
         let num_files = files.len();
 
         info!("Extracting {} app files to '{}'...", num_files, current_path.to_string_lossy());
+        let str_squirrel = "Squirrel.exe";
+
         let re = Regex::new(r"lib[\\\/][^\\\/]*[\\\/]").unwrap();
         let stub_regex = Regex::new("_ExecutionStub.exe$").unwrap();
         let symlink_regex = Regex::new(".__symlink$").unwrap();
-        let updater_idx = self.find_zip_file(|name| name.ends_with("Squirrel.exe"));
+        let updater_idx = self.find_zip_file(|name| name.ends_with(str_squirrel));
 
         // for legacy support, we still extract the nuspec file to the current dir.
         // in newer versions, the nuspec is in the current dir in the package itself.
@@ -288,26 +290,7 @@ impl BundleZip<'_> {
                 continue;
             }
 
-            // on windows, the zip paths are / and should be \ instead
-            #[cfg(target_os = "windows")]
-            let file_path_on_disk = file_path_on_disk.normalize_virtually()?;
-            #[cfg(target_os = "windows")]
-            let file_path_on_disk = file_path_on_disk.as_path();
-
-            debug!("    {} Extracting '{}' to '{}'", i, key, file_path_on_disk.to_string_lossy());
-            self.extract_zip_idx_to_path(i, &file_path_on_disk)?;
-
-            // on macos, we need to chmod +x the executable files
-            #[cfg(target_os = "macos")]
-            {
-                if let Ok(true) = super::bindetect::is_macho_image(&file_path_on_disk) {
-                    if let Err(e) = std::fs::set_permissions(&file_path_on_disk, std::fs::Permissions::from_mode(0o755)) {
-                        warn!("Failed to set executable permissions on '{}': {}", file_path_on_disk.to_string_lossy(), e);
-                    } else {
-                        info!("    {} Set executable permissions on '{}'", i, file_path_on_disk.to_string_lossy());
-                    }
-                }
-            }
+            self.extract_zip_idx_to_path_normalized(i, key, &file_path_on_disk)?;
 
             progress(((i as f32 / num_files as f32) * 100.0) as i16);
         }
@@ -335,6 +318,46 @@ impl BundleZip<'_> {
 
         Ok(())
     }
+
+    #[cfg(not(target_os = "linux"))]
+    pub fn find_and_extract_zip_file_to_path(&self, file: &String, file_path_on_disk: &PathBuf) -> Result<(), Error> {
+        let idx = self.find_zip_file(|name| name.ends_with(file));
+        match idx {
+            None => {
+                return Err(Error::FileNotFound("(zip bundle predicate)".to_owned()));
+            }
+            Some(idx) => {
+                return self.extract_zip_idx_to_path_normalized(idx, file, file_path_on_disk);
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn extract_zip_idx_to_path_normalized(&self, index: usize, key: &String, file_path_on_disk: &PathBuf) -> Result<(), Error> {
+        // on windows, the zip paths are / and should be \ instead
+        #[cfg(target_os = "windows")]
+        let file_path_on_disk = file_path_on_disk.normalize_virtually()?;
+        #[cfg(target_os = "windows")]
+        let file_path_on_disk = file_path_on_disk.as_path();
+
+        debug!("    {} Extracting '{}' to '{}'", index, key, file_path_on_disk.to_string_lossy());
+        self.extract_zip_idx_to_path(index, file_path_on_disk)?;
+
+        // on macos, we need to chmod +x the executable files
+        #[cfg(target_os = "macos")]
+        {
+            if let Ok(true) = super::bindetect::is_macho_image(&file_path_on_disk) {
+                if let Err(e) = std::fs::set_permissions(&file_path_on_disk, std::fs::Permissions::from_mode(0o755)) {
+                    warn!("Failed to set executable permissions on '{}': {}", file_path_on_disk.to_string_lossy(), e);
+                } else {
+                    info!("    {} Set executable permissions on '{}'", i, file_path_on_disk.to_string_lossy());
+                }
+            }
+        }
+
+        Ok(())
+    }
+
 }
 
 #[derive(Debug, derivative::Derivative, Clone)]
@@ -350,6 +373,7 @@ pub struct Manifest {
     pub machine_architecture: String,
     pub runtime_dependencies: String,
     pub main_exe: String,
+    pub config_exe: String,
     pub os: String,
     pub os_min_version: String,
     pub channel: String,
@@ -391,6 +415,8 @@ pub fn read_manifest_from_string(xml: &str) -> Result<Manifest, Error> {
                     obj.runtime_dependencies = text;
                 } else if el_name == "mainExe" {
                     obj.main_exe = text;
+                } else if el_name == "configExe" {
+                    obj.config_exe = text;
                 } else if el_name == "os" {
                     obj.os = text;
                 } else if el_name == "osMinVersion" {
