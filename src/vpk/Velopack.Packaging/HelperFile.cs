@@ -117,20 +117,30 @@ public static class HelperFile
         //    Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location),
         //    Environment.CurrentDirectory,
         //};
+        if (_searchPaths.Count == 0) {
+            throw new Exception($"HelperFile could not find '{toFind}' as no search paths were provided; Working dir: {Directory.GetCurrentDirectory()}");
+        }
 
         var files = _searchPaths
             .Where(d => !String.IsNullOrEmpty(d))
             .Distinct()
             .Select(d => Path.Combine(d, toFind))
-            .Where(d => File.Exists(d))
-            .Select(Path.GetFullPath);
+            .Where(File.Exists)
+            .Select(Path.GetFullPath)
+            .ToList();
 
-        if (predicate != null)
-            files = files.Where(predicate);
+        if (files.Count == 0 && throwWhenNotFound) {
+            throw new Exception($"HelperFile could not find '{toFind}' in any of {String.Join(Environment.NewLine, files)}; Working dir: {Directory.GetCurrentDirectory()}");
+        }
+        
+        if (predicate != null) {
+            files = files.Where(predicate).ToList();
+        }
 
         var result = files.FirstOrDefault();
-        if (result == null && throwWhenNotFound)
-            throw new Exception($"HelperFile could not find '{toFind}'.");
+        if (result == null && throwWhenNotFound) {
+            throw new Exception($"HelperFile could not find '{toFind}' that met the required conditions");
+        }
 
         return result;
     }
