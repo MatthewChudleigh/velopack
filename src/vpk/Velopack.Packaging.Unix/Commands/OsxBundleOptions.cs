@@ -18,6 +18,8 @@ public class OsxBundleOptions : IOutputOptions
 
     public string EntryExecutableName { get; set; }
 
+    public string ConfigExecutableName { get; set; }
+
     public string Icon { get; set; }
 
     public string BundleId { get; set; }

@@ -39,6 +39,8 @@ public class PackTask : MSBuildAsyncTask
 
     public string? EntryExecutableName { get; set; }
 
+    public string? ConfigExecutableName { get; set; }
+
     public string? Icon { get; set; }
 
     public string? ReleaseNotes { get; set; }

@@ -16,6 +16,8 @@ public class WindowsReleasifyOptions : WindowsSigningOptions
 
     public string EntryExecutableName { get; set; }
 
+    public string ConfigExecutableName { get; set; }
+
     public string Channel { get; set; }
 
     public bool SkipVelopackAppCheck { get; set; }

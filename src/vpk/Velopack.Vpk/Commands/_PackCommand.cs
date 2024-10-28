@@ -26,8 +26,10 @@ public abstract class PackCommand : PlatformCommand
     protected CliOption<string> PackTitleOption { get; private set; }
 
     public string EntryExecutableName { get; private set; }
+    public string ConfigExecutableName { get; private set; }
 
     protected CliOption<string> EntryExecutableNameOption { get; private set; }
+    protected CliOption<string> ConfigExecutableNameOption { get; private set; }
 
     public string Icon { get; private set; }
 
@@ -98,6 +100,10 @@ public abstract class PackCommand : PlatformCommand
 
         EntryExecutableNameOption = AddOption<string>((v) => EntryExecutableName = v, "-e", "--mainExe")
             .SetDescription("The file name (not path) of the main/entry executable.")
+            .SetArgumentHelpName("NAME");
+
+        ConfigExecutableNameOption = AddOption<string>((v) => ConfigExecutableName = v, "-c", "--configExe")
+            .SetDescription("The file name (not path) of the config executable.")
             .SetArgumentHelpName("NAME");
 
         ExcludeOption = AddOption<string>((v) => Exclude = v, "--exclude")

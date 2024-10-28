@@ -27,6 +27,8 @@ public abstract class PackageBuilder<T> : ICommand<T>
 
     protected string MainExePath { get; private set; }
 
+    protected string ConfigExePath { get; private set; }
+
     protected Dictionary<string, string> ExtraNuspecMetadata { get; } = new();
 
     private readonly Regex REGEX_EXCLUDES = new Regex(@".*[\\\/]createdump.*|.*\.vshost\..*|.*\.nupkg$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -228,6 +230,7 @@ public abstract class PackageBuilder<T> : ICommand<T>
 <version>{packVersion}</version>
 <channel>{Options.Channel}</channel>
 <mainExe>{Options.EntryExecutableName}</mainExe>
+<configExe>{Options.ConfigExecutableName}</configExe>
 <os>{rid.BaseRID.GetOsShortName()}</os>
 <rid>{rid.ToDisplay(RidDisplayType.NoVersion)}</rid>
 {extraMetadata.Trim()}
